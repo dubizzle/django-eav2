@@ -24,6 +24,7 @@ from functools import wraps
 
 from django.core.exceptions import FieldError, ObjectDoesNotExist
 from django.db import models
+from django.db import transaction
 from django.db.models import Case, IntegerField, Q, When
 from django.db.models.query import QuerySet
 from django.db.utils import NotSupportedError
@@ -394,16 +395,16 @@ class EavQuerySet(QuerySet):
                 new_kwargs.update({key: value})
 
         return_value = 0
+        with transaction.atomic():
+            if new_kwargs:
+                return_value = super(EavQuerySet, self).update(**new_kwargs)
 
-        if new_kwargs:
-            return_value = super(EavQuerySet, self).update(**new_kwargs)
-
-        if eav_kwargs:
-            for obj in self:
-                obj_eav = getattr(obj, config_cls.eav_attr)
-                for key, value in eav_kwargs.items():
-                    setattr(obj_eav, key, value)
-                obj_eav.save()
-            return_value = 1
+            if eav_kwargs:
+                for obj in self:
+                    obj_eav = getattr(obj, config_cls.eav_attr)
+                    for key, value in eav_kwargs.items():
+                        setattr(obj_eav, key, value)
+                    obj_eav.save()
+                return_value = 1
 
         return return_value
