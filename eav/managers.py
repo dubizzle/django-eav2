@@ -3,6 +3,7 @@ This module contains the custom manager used by entities registered with eav.
 """
 
 from django.db import models
+from django.db import transaction
 
 from .queryset import EavQuerySet
 
@@ -50,3 +51,22 @@ class EntityManager(models.Manager):
             return self.get(**kwargs), False
         except self.model.DoesNotExist:
             return self.create(**kwargs), True
+
+    def update_or_create(self, defaults=None, **kwargs):
+        """
+        Look up an object with the given kwargs, updating one with defaults
+        if it exists, otherwise create a new one.
+        Return a tuple (object, created), where created is a boolean
+        specifying whether an object was created.
+        """
+        defaults = defaults or {}
+        self._for_write = True
+        with transaction.atomic(using=self.db):
+            try:
+                obj = self.select_for_update().get(**kwargs)
+                obj.get_queryset().update(**kwargs)
+            except self.model.DoesNotExist:
+                obj = self.create(**kwargs)
+                if obj:
+                    return obj, True
+        return obj, False
