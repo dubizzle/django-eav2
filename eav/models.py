@@ -63,6 +63,9 @@ class EnumValue(models.Model):
        only have a total of four *EnumValues* objects, as you should have used
        the same *Yes* and *No* *EnumValues* for both *EnumGroups*.
     """
+    # Register EnumValue with EAV for attributes to be nested.
+    __metaclass__ = EAVModelMeta
+
     value = models.CharField(_('Value'), db_index=True, max_length=100)
     legacy_value = models.CharField(_('Legacy Value'), blank=True, null=True, db_index=True, max_length=100)
 
