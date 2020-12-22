@@ -40,9 +40,8 @@ from . import register
 
 class EnumValue(models.Model):
     """
-    *EnumValue* objects are the value 'choices' to multiple choice *TYPE_ENUM*
-    and *TYPE_ENUM_MULTI* :class:`Attribute` objects. They have only one field,
-    *value*, a ``CharField`` that must be unique.
+    *EnumValue* objects are the value 'choices' to attributes with datatype
+    in *CHOICE_TYPES*. They have only one field, *value*, a ``CharField``.
 
     For example::
 
@@ -64,6 +63,9 @@ class EnumValue(models.Model):
        only have a total of four *EnumValues* objects, as you should have used
        the same *Yes* and *No* *EnumValues* for both *EnumGroups*.
     """
+    # Register EnumValue with EAV for attributes to be nested.
+    __metaclass__ = EAVModelMeta
+
     value = models.CharField(_('Value'), db_index=True, max_length=100)
     legacy_value = models.CharField(_('Legacy Value'), blank=True, null=True, db_index=True, max_length=100)
 
@@ -75,7 +77,7 @@ class EnumGroup(models.Model):
     """
     *EnumGroup* objects have two fields - a *name* ``CharField`` and *values*,
     a ``ManyToManyField`` to :class:`EnumValue`. :class:`Attribute` classes
-    with datatype *TYPE_ENUM* or *TYPE_ENUM_MULTI* have a ``ForeignKey``
+    with datatype in *CHOICE_TYPES* have a ``ForeignKey``
     field to *EnumGroup*.
 
     See :class:`EnumValue` for an example.
@@ -105,7 +107,7 @@ class Attribute(models.Model):
        to save or create any entity object for which this attribute applies,
        without first setting this EAV attribute.
 
-    There are 9 possible values for datatype:
+    Following are possible values for datatype:
 
         * int (TYPE_INT)
         * float (TYPE_FLOAT)
@@ -116,6 +118,7 @@ class Attribute(models.Model):
         * object (TYPE_OBJECT)
         * enum (TYPE_ENUM)
         * enum_multi (TYPE_ENUM_MULTI)
+        * enum_nested (TYPE_ENUM_NESTED)
 
     Examples::
 
@@ -140,28 +143,41 @@ class Attribute(models.Model):
     class Meta:
         ordering = ['name']
 
-    TYPE_TEXT       = 'text'
-    TYPE_FLOAT      = 'float'
-    TYPE_DECIMAL    = 'decimal'
-    TYPE_INT        = 'int'
-    TYPE_DATE       = 'date'
-    TYPE_BOOLEAN    = 'bool'
-    TYPE_OBJECT     = 'object'
-    TYPE_ENUM       = 'enum'
-    TYPE_ENUM_MULTI = 'enum_multi'
-    TYPE_JSON       = 'json'
+    TYPE_TEXT        = 'text'
+    TYPE_FLOAT       = 'float'
+    TYPE_DECIMAL     = 'decimal'
+    TYPE_INT         = 'int'
+    TYPE_DATE        = 'date'
+    TYPE_BOOLEAN     = 'bool'
+    TYPE_OBJECT      = 'object'
+    TYPE_ENUM        = 'enum'
+    TYPE_ENUM_MULTI  = 'enum_multi'
+    TYPE_ENUM_NESTED = 'enum_nested'
+    TYPE_JSON        = 'json'
+
+    SINGLE_CHOICE_TYPES = (
+        TYPE_ENUM,
+        TYPE_ENUM_NESTED,
+    )
+
+    MULTI_CHOICE_TYPES = (
+        TYPE_ENUM_MULTI,
+    )
+
+    CHOICE_TYPES = SINGLE_CHOICE_TYPES + MULTI_CHOICE_TYPES
 
     DATATYPE_CHOICES = (
-        (TYPE_TEXT,       _('Text')),
-        (TYPE_DATE,       _('Date')),
-        (TYPE_FLOAT,      _('Float')),
-        (TYPE_DECIMAL,    _('Decimal')),
-        (TYPE_INT,        _('Integer')),
-        (TYPE_BOOLEAN,    _('True / False')),
-        (TYPE_OBJECT,     _('Django Object')),
-        (TYPE_ENUM,       _('Choice')),
-        (TYPE_ENUM_MULTI, _('Multiple Choice')),
-        (TYPE_JSON, _('Text')),
+        (TYPE_TEXT,        _('Text')),
+        (TYPE_DATE,        _('Date')),
+        (TYPE_FLOAT,       _('Float')),
+        (TYPE_DECIMAL,     _('Decimal')),
+        (TYPE_INT,         _('Integer')),
+        (TYPE_BOOLEAN,     _('True / False')),
+        (TYPE_OBJECT,      _('Django Object')),
+        (TYPE_ENUM,        _('Choice')),
+        (TYPE_ENUM_MULTI,  _('Multiple Choice')),
+        (TYPE_ENUM_NESTED, _('Nested Choice Attribute')),
+        (TYPE_JSON,        _('Text')),
     )
 
     # Core attributes
@@ -269,8 +285,9 @@ class Attribute(models.Model):
             'date':        validate_date,
             'bool':        validate_bool,
             'object':      validate_object,
-            'enum':        validate_enum,
-            'enum_multi':  validate_enum_multi,
+            'enum':        validate_single_choice,
+            'enum_multi':  validate_multi_choice,
+            'enum_nested': validate_multi_choice,
             'json':        validate_json,
         }
 
@@ -284,7 +301,7 @@ class Attribute(models.Model):
         for validator in self.get_validators():
             validator(value)
 
-        if self.datatype == self.TYPE_ENUM:
+        if self.datatype in slef.SINGLE_CHOICE_TYPES:
             if isinstance(value, EnumValue):
                 value = value.value
             if not self.enum_group.values.filter(value=value).exists():
@@ -292,7 +309,7 @@ class Attribute(models.Model):
                     _('{val} is not a valid choice for {attr}').format(val = value, attr = self)
                 )
 
-        if self.datatype == self.TYPE_ENUM_MULTI:
+        if self.datatype == self.MULTI_CHOICE_TYPES:
             value = [v.value if isinstance(v, EnumValue) else v for v in value.all()]
             if self.enum_group.values.filter(value__in=value).count() != len(value):
                 raise ValidationError(
@@ -313,16 +330,15 @@ class Attribute(models.Model):
     def clean(self):
         """
         Validates the attribute.  Will raise ``ValidationError`` if the
-        attribute's datatype is *TYPE_ENUM* or *TYPE_ENUM_MULTI* and
-        enum_group is not set, or if the attribute is not *TYPE_ENUM*
-        or *TYPE_ENUM_MULTI* and the enum group is set.
+        attribute's datatype is in *CHOICE_TYPES* and enum_group is not set,
+        or if the attribute is not in *CHOICE_TYPES* and the enum group is set.
         """
-        if self.datatype in (self.TYPE_ENUM, self.TYPE_ENUM_MULTI) and not self.enum_group:
+        if self.datatype in self.CHOICE_TYPES and not self.enum_group:
             raise ValidationError(
                 _('You must set the choice group for multiple choice attributes')
             )
 
-        if self.datatype not in (self.TYPE_ENUM, self.TYPE_ENUM_MULTI) and self.enum_group:
+        if self.datatype not in self.CHOICE_TYPES and self.enum_group:
             raise ValidationError(
                 _('You can only assign a choice group to multiple choice attributes')
             )
@@ -330,10 +346,9 @@ class Attribute(models.Model):
     def get_choices(self):
         """
         Returns a query set of :class:`EnumValue` objects for this attribute.
-        Returns None if the datatype of this attribute is not *TYPE_ENUM* or
-        *TYPE_ENUM_MULTI*.
+        Returns None if the datatype of this attribute is not in *CHOICE_TYPES*.
         """
-        return self.enum_group.values.all() if self.datatype in (self.TYPE_ENUM, self.TYPE_ENUM_MULTI) else None
+        return self.enum_group.values.all() if self.datatype in self.CHOICE_TYPES else None
 
     def save_value(self, entity, value):
         """
@@ -356,7 +371,7 @@ class Attribute(models.Model):
                 entity_id=entity.pk,
             ).delete()
         else:
-            if self.datatype == self.TYPE_ENUM_MULTI:
+            if self.datatype in self.MULTI_CHOICE_TYPES:
                 value_obj, created = self.value_set.get_or_create(
                     entity_ct=ct,
                     entity_id=entity.pk,
@@ -466,9 +481,16 @@ class Value(models.Model):
             return {}
 
     @value_json.setter
-    def value_json(self, new_value):
-        self.value_text = json.dumps(new_value)
+    def value_json(self, value):
+        self.value_text = json.dumps(value)
 
+    @property
+    def value_enum_nested(self):
+        return self.value_enum
+
+    @value_enum_nested.setter
+    def value_enum_nested(self, value):
+        self.value_enum = value
 
     def _get_value(self):
         """
