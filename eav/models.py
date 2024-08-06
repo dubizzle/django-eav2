@@ -66,9 +66,13 @@ class EnumValue(models.Model):
     """
     value = models.CharField(_('Value'), db_index=True, max_length=100)
     legacy_value = models.CharField(_('Legacy Value'), blank=True, null=True, db_index=True, max_length=100)
+    slug = models.SlugField(null=True, blank=True, max_length=100)
 
     def __str__(self):
         return '<EnumValue {}>'.format(self.value)
+    
+    class Meta:
+        unique_together = [('legacy_value', 'slug')]
 
 
 class EnumGroup(models.Model):
