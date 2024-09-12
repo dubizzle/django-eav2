@@ -93,7 +93,7 @@ def validate_object(value):
         raise ValidationError(_(u"Model has not been saved yet"))
 
 
-def validate_enum(value):
+def validate_single_choice(value):
     """
     Raises ``ValidationError`` unless *value* is a saved
     :class:`~eav.models.EnumValue` model instance.
@@ -104,7 +104,7 @@ def validate_enum(value):
         raise ValidationError(_(u"EnumValue has not been saved yet"))
 
 
-def validate_enum_multi(value):
+def validate_multi_choice(value):
     """
     Raises ``ValidationError`` unless *value* is a saved
     :class:`~eav.models.EnumValue` model instance.
