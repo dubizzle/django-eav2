@@ -57,7 +57,7 @@ class EavDatatypeField(models.CharField):
         if type(instance).objects.get(pk=instance.pk).datatype == instance.datatype:
             return
 
-        if instance.value_set.count():
-            raise ValidationError(_(
-                'You cannot change the datatype of an attribute that is already in use.'
-            ))
+        # if instance.value_set.count():
+        #     raise ValidationError(_(
+        #         'You cannot change the datatype of an attribute that is already in use.'
+        #     ))
