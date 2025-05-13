@@ -362,8 +362,16 @@ class Attribute(models.Model):
                     entity_id=entity.pk,
                 )
                 if not created:
-                    value_obj.value.clear()
-                value_obj.value.add(*value)
+                    new = set(value)
+                    existing = set(value_obj.value_enum_multi.all())
+                    to_add = new - existing
+                    to_remove = existing - new
+                    if to_add:
+                        value_obj.value.add(*to_add)
+                    if to_remove:
+                        value_obj.value.remove(*to_remove)
+                else:
+                    value_obj.value.add(*value)
             else:
                 value_obj, _ = self.value_set.update_or_create(
                     entity_ct=ct,
