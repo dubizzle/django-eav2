@@ -488,7 +488,12 @@ class Value(models.Model):
         return '{}: "{}" ({})'.format(self.attribute.name, self.value, self.entity)
 
     def __repr__(self):
-        return '{}: "{}" ({})'.format(self.attribute.name, self.value, self.entity.pk)
+        entity_pk = getattr(self.entity, 'pk', None)
+        return '{}: "{}" ({})'.format(
+            self.attribute.name,
+            self.value,
+            entity_pk,
+        )
 
 
 class Entity(object):
